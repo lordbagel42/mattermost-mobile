@@ -227,6 +227,7 @@ const themeTypeMap: ThemeTypeMap = {
     Organization: 'sapphire',
     'Mattermost Dark': 'indigo',
     'Windows Dark': 'onyx',
+    'GitHub Dark': 'githubDark',
     Denim: 'denim',
     Sapphire: 'sapphire',
     Quartz: 'quartz',

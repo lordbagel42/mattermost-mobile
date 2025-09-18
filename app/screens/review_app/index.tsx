@@ -5,7 +5,17 @@ import {requestReview} from 'expo-store-review';
 import React, {useCallback, useMemo, useRef, useState} from 'react';
 import {useIntl} from 'react-intl';
 import {TouchableWithoutFeedback, View, Text, Alert, TouchableOpacity} from 'react-native';
-import Animated, {runOnJS, SlideInDown, SlideOutDown} from 'react-native-reanimated';
+import * as Haptics from 'react-native-haptic-feedback';
+import Animated, {
+    runOnJS,
+    SlideInDown,
+    SlideOutDown,
+    useSharedValue,
+    useAnimatedStyle,
+    withSpring,
+    withSequence,
+    withDelay,
+} from 'react-native-reanimated';
 
 import {storeDontAskForReview, storeLastAskForReview} from '@actions/app/global';
 import {isNPSEnabled} from '@actions/remote/nps';
@@ -18,6 +28,7 @@ import useAndroidHardwareBackHandler from '@hooks/android_back_handler';
 import useBackNavigation from '@hooks/navigate_back';
 import SecurityManager from '@managers/security_manager';
 import {dismissOverlay, showShareFeedbackOverlay} from '@screens/navigation';
+import {createElevation} from '@utils/animations';
 import {changeOpacity, makeStyleSheetFromTheme} from '@utils/theme';
 import {typography} from '@utils/typography';
 
@@ -47,13 +58,13 @@ const getStyleSheet = makeStyleSheetFromTheme((theme: Theme) => ({
     },
     wrapper: {
         backgroundColor: theme.centerChannelBg,
-        borderRadius: 12,
+        borderRadius: 16,
         flex: 1,
         margin: 10,
         opacity: 1,
+        ...createElevation(8),
         borderWidth: 1,
-        borderColor: changeOpacity(theme.centerChannelColor, 0.16),
-
+        borderColor: changeOpacity(theme.centerChannelColor, 0.12),
     },
     content: {
         marginHorizontal: 24,
@@ -63,14 +74,13 @@ const getStyleSheet = makeStyleSheetFromTheme((theme: Theme) => ({
     buttonsWrapper: {
         flexDirection: 'row',
         width: '100%',
+        gap: 12,
     },
     leftButton: {
         flex: 1,
-        marginRight: 5,
     },
     rightButton: {
         flex: 1,
-        marginLeft: 5,
     },
     close: {
         justifyContent: 'center',
@@ -78,6 +88,7 @@ const getStyleSheet = makeStyleSheetFromTheme((theme: Theme) => ({
         width: 40,
         paddingLeft: 16,
         paddingTop: 16,
+        borderRadius: 22,
     },
     title: {
         ...typography('Heading', 600, 'SemiBold'),
@@ -89,8 +100,9 @@ const getStyleSheet = makeStyleSheetFromTheme((theme: Theme) => ({
     subtitle: {
         ...typography('Body', 200, 'Regular'),
         color: changeOpacity(theme.centerChannelColor, 0.72),
-        marginBottom: 24,
         textAlign: 'center',
+        lineHeight: 24,
+        marginBottom: 32,
     },
     dontAsk: {
         ...typography('Body', 75, 'SemiBold'),
@@ -110,15 +122,39 @@ const ReviewApp = ({
 
     const [show, setShow] = useState(true);
 
+    // Animation values for enhanced effects
+    const contentOpacity = useSharedValue(0);
+    const contentScale = useSharedValue(0.9);
+
     const executeAfterDone = useRef<() => void>(() => dismissOverlay(componentId));
+
+    const contentAnimatedStyle = useAnimatedStyle(() => {
+        return {
+            opacity: contentOpacity.value,
+            transform: [
+                {scale: contentScale.value},
+            ],
+        };
+    }, []);
 
     const close = useCallback((afterDone: () => void) => {
         executeAfterDone.current = afterDone;
         storeLastAskForReview();
-        setShow(false);
-    }, []);
+
+        // Animate content out
+        contentOpacity.value = withSequence(
+            withTiming(0, {duration: 200}),
+            withTiming(0, {duration: 100}, () => {
+                runOnJS(setShow)(false);
+            }),
+        );
+        contentScale.value = withTiming(0.8, {duration: 300});
+    }, [contentOpacity, contentScale]);
 
     const onPressYes = useCallback(async () => {
+        // Haptic feedback
+        Haptics.trigger('impactMedium');
+
         close(async () => {
             await dismissOverlay(componentId);
             try {
@@ -133,6 +169,9 @@ const ReviewApp = ({
     }, [close, intl, componentId]);
 
     const onPressNeedsWork = useCallback(async () => {
+        // Haptic feedback
+        Haptics.trigger('impactLight');
+
         close(async () => {
             await dismissOverlay(componentId);
             if (await isNPSEnabled(serverUrl)) {
@@ -166,7 +205,15 @@ const ReviewApp = ({
         if (finished) {
             runOnJS(doAfterAnimation)();
         }
-    }), []);
+    }), [doAfterAnimation]);
+
+    const slideIn = useMemo(() => SlideInDown.withCallback(() => {
+        'worklet';
+
+        // Animate content in with staggered animation
+        contentOpacity.value = withDelay(200, withTiming(1, {duration: 400}));
+        contentScale.value = withDelay(200, withSpring(1, {damping: 20, stiffness: 300}));
+    }), [contentOpacity, contentScale]);
 
     return (
         <View
@@ -180,12 +227,13 @@ const ReviewApp = ({
                 {show &&
                     <Animated.View
                         style={styles.wrapper}
-                        entering={SlideInDown}
+                        entering={slideIn}
                         exiting={slideOut}
                     >
                         <TouchableOpacity
                             style={styles.close}
                             onPress={onPressClose}
+                            activeOpacity={0.7}
                         >
                             <CompassIcon
                                 name='close'
@@ -193,7 +241,9 @@ const ReviewApp = ({
                                 color={changeOpacity(theme.centerChannelColor, 0.56)}
                             />
                         </TouchableOpacity>
-                        <View style={styles.content}>
+                        <Animated.View
+                            style={[styles.content, contentAnimatedStyle]}
+                        >
                             <ReviewAppIllustration theme={theme}/>
                             <Text style={styles.title}>
                                 {intl.formatMessage({id: 'rate.title', defaultMessage: 'Enjoying Mattermost?'})}
@@ -209,6 +259,9 @@ const ReviewApp = ({
                                     onPress={onPressNeedsWork}
                                     text={intl.formatMessage({id: 'rate.button.needs_work', defaultMessage: 'Needs work'})}
                                     buttonContainerStyle={styles.leftButton}
+                                    animated={true}
+                                    withHapticFeedback={true}
+                                    elevation={2}
                                 />
                                 <Button
                                     theme={theme}
@@ -216,6 +269,9 @@ const ReviewApp = ({
                                     onPress={onPressYes}
                                     text={intl.formatMessage({id: 'rate.button.yes', defaultMessage: 'Love it!'})}
                                     buttonContainerStyle={styles.rightButton}
+                                    animated={true}
+                                    withHapticFeedback={true}
+                                    elevation={2}
                                 />
                             </View>
                             {hasAskedBefore && (
@@ -227,7 +283,7 @@ const ReviewApp = ({
                                     </Text>
                                 </TouchableWithoutFeedback>
                             )}
-                        </View>
+                        </Animated.View>
                     </Animated.View>
                 }
             </View>
