@@ -123,13 +123,24 @@ const Card = ({
 
     const CardComponent = animated && onPress ? Animated.createAnimatedComponent(View) : View;
 
+    if (onPress) {
+        return (
+            <CardComponent
+                style={cardStyle}
+                testID={testID}
+                onPressIn={handlePressIn}
+                onPressOut={handlePressOut}
+                onPress={onPress}
+            >
+                {children}
+            </CardComponent>
+        );
+    }
+
     return (
         <CardComponent
             style={cardStyle}
             testID={testID}
-            onPressIn={onPress ? handlePressIn : undefined}
-            onPressOut={onPress ? handlePressOut : undefined}
-            onPress={onPress}
         >
             {children}
         </CardComponent>
