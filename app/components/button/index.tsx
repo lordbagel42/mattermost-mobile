@@ -2,11 +2,19 @@
 // See LICENSE.txt for license information.
 
 import {Button as ElementButton, type ButtonProps} from '@rneui/base';
-import React, {useMemo, type ReactNode} from 'react';
+import React, {useMemo, type ReactNode, useCallback} from 'react';
 import {type StyleProp, StyleSheet, Text, type TextStyle, View, type ViewStyle, type Insets} from 'react-native';
+import * as Haptics from 'react-native-haptic-feedback';
+import Animated, {
+    useSharedValue,
+    useAnimatedStyle,
+    withSpring,
+    runOnJS,
+} from 'react-native-reanimated';
 
 import CompassIcon from '@components/compass_icon';
 import Loading from '@components/loading';
+import {createElevation} from '@utils/animations';
 import {buttonBackgroundStyle, buttonTextStyle} from '@utils/buttonStyles';
 
 type Props = Omit<ButtonProps, 'size'> & {
@@ -27,6 +35,9 @@ type Props = Omit<ButtonProps, 'size'> & {
     showLoader?: boolean;
     isInverted?: boolean;
     isDestructive?: boolean;
+    withHapticFeedback?: boolean;
+    elevation?: number;
+    animated?: boolean;
 };
 
 const styles = StyleSheet.create({
@@ -43,6 +54,8 @@ const iconSizePerSize: Record<ButtonSize, number> = {
     m: 18,
     lg: 22,
 };
+
+const AnimatedElementButton = Animated.createAnimatedComponent(ElementButton);
 
 const Button = ({
     theme,
@@ -62,6 +75,9 @@ const Button = ({
     showLoader = false,
     isInverted = false,
     isDestructive = false,
+    withHapticFeedback = true,
+    elevation = 0,
+    animated = true,
 }: Props) => {
     let buttonType: ButtonType = 'default';
     if (isDestructive) {
@@ -70,15 +86,39 @@ const Button = ({
         buttonType = 'inverted';
     }
 
+    // Animation values
+    const scale = useSharedValue(1);
+    const opacity = useSharedValue(1);
+
+    const animatedStyle = useAnimatedStyle(() => {
+        return {
+            transform: [
+                {
+                    scale: scale.value,
+                },
+            ],
+            opacity: opacity.value,
+        };
+    }, []);
+
+    const elevationStyle = useMemo(() => {
+        if (elevation > 0) {
+            return createElevation(elevation);
+        }
+        return {};
+    }, [elevation]);
+
     const bgStyle = useMemo(() => [
         buttonBackgroundStyle(theme, size, emphasis, buttonType),
+        elevationStyle,
         backgroundStyle,
-    ], [theme, backgroundStyle, size, emphasis, buttonType]);
+    ], [theme, backgroundStyle, size, emphasis, buttonType, elevationStyle]);
 
     const bgDisabledStyle = useMemo(() => [
         buttonBackgroundStyle(theme, size, emphasis, 'disabled'),
+        elevationStyle,
         backgroundStyle,
-    ], [theme, backgroundStyle, size, emphasis]);
+    ], [theme, backgroundStyle, size, emphasis, elevationStyle]);
 
     const txtStyle = useMemo(() => StyleSheet.flatten([
         buttonTextStyle(theme, size, emphasis, buttonType),
@@ -91,6 +131,33 @@ const Button = ({
     ]), [theme, textStyle, size, emphasis]);
 
     const txtStyleToUse = disabled ? txtDisabledStyle : txtStyle;
+
+    const handlePress = useCallback(() => {
+        if (disabled) {
+            return;
+        }
+
+        if (animated) {
+            scale.value = withSpring(0.95, {damping: 15, stiffness: 300}, () => {
+                scale.value = withSpring(1, {damping: 15, stiffness: 300});
+            });
+        }
+
+        if (withHapticFeedback) {
+            Haptics.trigger('impactLight');
+        }
+
+        if (onPress) {
+            // Small delay to show the animation
+            if (animated) {
+                setTimeout(() => {
+                    runOnJS(onPress)();
+                }, 50);
+            } else {
+                onPress();
+            }
+        }
+    }, [disabled, animated, withHapticFeedback, onPress, scale]);
 
     const loadingComponent = (
         <Loading
@@ -116,12 +183,14 @@ const Button = ({
         );
     }
 
+    const ButtonComponent = animated ? AnimatedElementButton : ElementButton;
+
     return (
-        <ElementButton
+        <ButtonComponent
             buttonStyle={bgStyle}
-            containerStyle={buttonContainerStyle}
+            containerStyle={[buttonContainerStyle, animated && animatedStyle]}
             disabledStyle={bgDisabledStyle}
-            onPress={onPress}
+            onPress={handlePress}
             testID={testID}
             disabled={disabled}
             hitSlop={hitSlop}
@@ -140,7 +209,7 @@ const Button = ({
                 </Text>
                 {isIconOnTheRight && icon}
             </View>
-        </ElementButton>
+        </ButtonComponent>
     );
 };
 

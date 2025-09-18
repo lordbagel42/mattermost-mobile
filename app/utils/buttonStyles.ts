@@ -309,10 +309,25 @@ export const buttonSizeStyles: ButtonSizes = StyleSheet.create({
 
 export const buttonStyles = StyleSheet.create({
     main: {
-        borderRadius: 4,
+        borderRadius: 8,
+        overflow: 'hidden',
     },
     fullWidth: {
         width: '100%',
+    },
+    elevated: {
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+        shadowColor: '#000000',
+        elevation: 4,
+    },
+    material: {
+        borderRadius: 12,
+        overflow: 'hidden',
     },
 });
 
